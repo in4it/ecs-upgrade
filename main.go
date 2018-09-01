@@ -81,6 +81,8 @@ func mainWithReturnCode() int {
 			waited += 30
 		}
 	}
+	// drain
+	// check target health
 	// wait for cooldown period
 	// scale down
 	err = a.scaleAutoscalingGroup(asgName, asg.DesiredCapacity)
@@ -91,4 +93,42 @@ func mainWithReturnCode() int {
 	// delete old launchconfig
 
 	return 0
+}
+func checkTargetHealth(instances []AutoscalingInstance, newLaunchConfig string) (int64, error) {
+	var waited int64
+	lb := LB{}
+	targetGroups, err := lb.getTargets()
+	if err != nil {
+		return waited, err
+	}
+	var allHealthy bool
+	for i := 0; !allHealthy && i < 25; i++ {
+		var unhealthy, healthy int64
+		for _, targetGroup := range targetGroups {
+			targetsHealth, err := lb.getTargetHealth(targetGroup)
+			if err != nil {
+				return waited, err
+			}
+			for instanceId, targetHealth := range targetsHealth {
+				for _, instance := range instances {
+					if instance.InstanceId == instanceId && instance.LaunchConfig == newLaunchConfig {
+						mainLogger.Debugf("Found instance %s in target group %s with health %s", instanceId, targetGroup, targetHealth)
+						if targetHealth == "healthy" {
+							healthy += 1
+						} else {
+							unhealthy += 1
+						}
+					}
+				}
+			}
+		}
+		if (healthy - unhealthy) == 0 {
+			allHealthy = true
+		} else {
+			mainLogger.Debugf("Checking loadbalancer target instances health: Waiting 30s (healthy: %d, unhealthy: %d", healthy, unhealthy)
+			time.Sleep(30 * time.Second)
+			waited += 30
+		}
+	}
+	return waited, nil
 }

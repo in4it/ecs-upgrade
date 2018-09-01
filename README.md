@@ -19,3 +19,4 @@ docker run -it -e AWS_ACCESS_KEY_ID=... -e AWS_SECRET_ACCESS_KEY=... -e AWS_REGI
 [ ] Wait for cooldown
 [ ] Delete old launchconfig
 [ ] Test healthchecks on matching ALBs
+[ ] Drain

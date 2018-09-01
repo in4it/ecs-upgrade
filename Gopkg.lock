@@ -2,7 +2,7 @@
 
 
 [[projects]]
-  digest = "1:3b63b14eea7d7722b9a6c58de4a421885d1fb16d928220124f44e07f78798678"
+  digest = "1:7bffd14f2d22059115c23421731922a8d8b2af97c0036c3d15d5faf86cd8c013"
   name = "github.com/aws/aws-sdk-go"
   packages = [
     "aws",
@@ -28,12 +28,16 @@
     "internal/shareddefaults",
     "private/protocol",
     "private/protocol/ec2query",
+    "private/protocol/json/jsonutil",
+    "private/protocol/jsonrpc",
     "private/protocol/query",
     "private/protocol/query/queryutil",
     "private/protocol/rest",
     "private/protocol/xml/xmlutil",
     "service/autoscaling",
     "service/ec2",
+    "service/ecs",
+    "service/elbv2",
     "service/sts",
   ]
   pruneopts = "UT"
@@ -72,6 +76,8 @@
     "github.com/aws/aws-sdk-go/aws/session",
     "github.com/aws/aws-sdk-go/service/autoscaling",
     "github.com/aws/aws-sdk-go/service/ec2",
+    "github.com/aws/aws-sdk-go/service/ecs",
+    "github.com/aws/aws-sdk-go/service/elbv2",
     "github.com/juju/loggo",
   ]
   solver-name = "gps-cdcl"
