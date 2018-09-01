@@ -23,6 +23,12 @@ type AutoscalingInstance struct {
 	LaunchConfig string
 	HealthStatus string
 }
+type AutoscalingGroup struct {
+	LaunchConfigurationName string
+	DesiredCapacity         int64
+	MinSize                 int64
+	MaxSize                 int64
+}
 
 func (a *Autoscaling) newLaunchConfigFromExisting(launchConfig string) (string, error) {
 	lc, err := a.getLaunchConfig(launchConfig)
@@ -180,7 +186,7 @@ func (a *Autoscaling) updateAutoscalingLaunchConfig(autoscalingGroupName, launch
 	return nil
 }
 
-func (a *Autoscaling) getAutoscalingGroupSize(autoScalingGroupName string) (int64, int64, int64, error) {
+func (a *Autoscaling) describeAutoscalingGroup(autoScalingGroupName string) (AutoscalingGroup, error) {
 	svc := autoscaling.New(session.New())
 	input := &autoscaling.DescribeAutoScalingGroupsInput{
 		AutoScalingGroupNames: []*string{aws.String(autoScalingGroupName)},
@@ -192,16 +198,20 @@ func (a *Autoscaling) getAutoscalingGroupSize(autoScalingGroupName string) (int6
 		} else {
 			autoscalingLogger.Errorf("%v", err.Error())
 		}
-		return 0, 0, 0, err
+		return AutoscalingGroup{}, err
 	}
 	if len(result.AutoScalingGroups) == 0 {
-		return 0, 0, 0, errors.New("No autoscaling groups returned")
+		return AutoscalingGroup{}, errors.New("No autoscaling groups returned")
 	}
 
-	return aws.Int64Value(result.AutoScalingGroups[0].MinSize),
-		aws.Int64Value(result.AutoScalingGroups[0].DesiredCapacity),
-		aws.Int64Value(result.AutoScalingGroups[0].MaxSize),
-		nil
+	asg := AutoscalingGroup{
+		MinSize:                 aws.Int64Value(result.AutoScalingGroups[0].MinSize),
+		DesiredCapacity:         aws.Int64Value(result.AutoScalingGroups[0].DesiredCapacity),
+		MaxSize:                 aws.Int64Value(result.AutoScalingGroups[0].MaxSize),
+		LaunchConfigurationName: aws.StringValue(result.AutoScalingGroups[0].LaunchConfigurationName),
+	}
+
+	return asg, nil
 }
 
 func (a *Autoscaling) getAutoscalingInstanceHealth(autoScalingGroupName string) ([]AutoscalingInstance, error) {

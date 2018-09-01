@@ -21,19 +21,20 @@ func main() {
 }
 
 func mainWithReturnCode() int {
-	launchConfig := os.Getenv("ECS_LAUNCHCONFIG")
-	if len(launchConfig) == 0 {
-		fmt.Printf("ECS_LAUNCHCONFIG not set\n")
-		return 1
-	}
-	asg := os.Getenv("ECS_ASG")
-	if len(asg) == 0 {
+	asgName := os.Getenv("ECS_ASG")
+	if len(asgName) == 0 {
 		fmt.Printf("ECS_ASG not set\n")
 		return 1
 	}
 	a := Autoscaling{}
+	// get asg
+	asg, err := a.describeAutoscalingGroup(asgName)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return 1
+	}
 	// create new launch config
-	newLaunchConfigName, err := a.newLaunchConfigFromExisting(launchConfig)
+	newLaunchConfigName, err := a.newLaunchConfigFromExisting(asg.LaunchConfigurationName)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		return 1
@@ -42,19 +43,13 @@ func mainWithReturnCode() int {
 		return 0
 	}
 	// update autoscaling group
-	err = a.updateAutoscalingLaunchConfig(asg, newLaunchConfigName)
-	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		return 1
-	}
-	// get asg size
-	_, desired, _, err := a.getAutoscalingGroupSize(asg)
+	err = a.updateAutoscalingLaunchConfig(asgName, newLaunchConfigName)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		return 1
 	}
 	// scale
-	err = a.scaleAutoscalingGroup(asg, desired*2)
+	err = a.scaleAutoscalingGroup(asgName, asg.DesiredCapacity*2)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		return 1
@@ -63,7 +58,7 @@ func mainWithReturnCode() int {
 	var healthy bool
 	var waited int64
 	for i := 0; !healthy && i < 25; i++ {
-		instances, err := a.getAutoscalingInstanceHealth(asg)
+		instances, err := a.getAutoscalingInstanceHealth(asgName)
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
 			return 1
@@ -78,7 +73,7 @@ func mainWithReturnCode() int {
 				}
 			}
 		}
-		if healthyInstances >= desired {
+		if healthyInstances >= asg.DesiredCapacity {
 			healthy = true
 		} else {
 			mainLogger.Debugf("Checking autoscaling instances health: Waiting 30s")
@@ -88,7 +83,7 @@ func mainWithReturnCode() int {
 	}
 	// wait for cooldown period
 	// scale down
-	err = a.scaleAutoscalingGroup(asg, desired)
+	err = a.scaleAutoscalingGroup(asgName, asg.DesiredCapacity)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		return 1
