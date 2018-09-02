@@ -4,6 +4,7 @@ import (
 	"github.com/juju/loggo"
 
 	"fmt"
+	"math"
 	"os"
 	"time"
 )
@@ -24,6 +25,11 @@ func mainWithReturnCode() int {
 	asgName := os.Getenv("ECS_ASG")
 	if len(asgName) == 0 {
 		fmt.Printf("ECS_ASG not set\n")
+		return 1
+	}
+	clusterName := os.Getenv("ECS_CLUSTER")
+	if len(clusterName) == 0 {
+		fmt.Printf("ECS_CLUSTER not set\n")
 		return 1
 	}
 	a := Autoscaling{}
@@ -57,6 +63,7 @@ func mainWithReturnCode() int {
 	// wait until new instances are healthy
 	var healthy bool
 	var waited int64
+	var instances []AutoscalingInstance
 	for i := 0; !healthy && i < 25; i++ {
 		instances, err := a.getAutoscalingInstanceHealth(asgName)
 		if err != nil {
@@ -82,7 +89,17 @@ func mainWithReturnCode() int {
 		}
 	}
 	// drain
+	err = drain(clusterName, instances, newLaunchConfigName)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return 1
+	}
 	// check target health
+	err = checkTargetHealth(instances, newLaunchConfigName)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return 1
+	}
 	// wait for cooldown period
 	// scale down
 	err = a.scaleAutoscalingGroup(asgName, asg.DesiredCapacity)
@@ -94,12 +111,43 @@ func mainWithReturnCode() int {
 
 	return 0
 }
-func checkTargetHealth(instances []AutoscalingInstance, newLaunchConfig string) (int64, error) {
-	var waited int64
+
+func drain(clusterName string, instances []AutoscalingInstance, newLaunchConfig string) error {
+	var instancesToDrain []string
+	e := ECS{}
+	for _, instance := range instances {
+		if instance.LaunchConfig != newLaunchConfig {
+			instancesToDrain = append(instancesToDrain, instance.InstanceId)
+		}
+	}
+	if float64(len(instancesToDrain)) > math.Ceil(float64(len(instances)/2)) {
+		return fmt.Errorf("Going to drain %d instances out of %d, which is more than 50%", len(instancesToDrain), len(instances))
+	}
+	containerInstanceArns, err := e.listContainerInstances(clusterName)
+	if err != nil {
+		return err
+	}
+	containerInstances, err := e.describeContainerInstances(clusterName, containerInstanceArns)
+	if err != nil {
+		return err
+	}
+	for _, instanceId := range instancesToDrain {
+		if containerId, ok := containerInstances[instanceId]; ok {
+			err = e.drainNode(clusterName, containerId)
+			if err != nil {
+				return err
+			}
+		} else {
+			return fmt.Errorf("Couldn't drain instance %s", instanceId)
+		}
+	}
+	return nil
+}
+func checkTargetHealth(instances []AutoscalingInstance, newLaunchConfig string) error {
 	lb := LB{}
 	targetGroups, err := lb.getTargets()
 	if err != nil {
-		return waited, err
+		return err
 	}
 	var allHealthy bool
 	for i := 0; !allHealthy && i < 25; i++ {
@@ -107,7 +155,7 @@ func checkTargetHealth(instances []AutoscalingInstance, newLaunchConfig string) 
 		for _, targetGroup := range targetGroups {
 			targetsHealth, err := lb.getTargetHealth(targetGroup)
 			if err != nil {
-				return waited, err
+				return err
 			}
 			for instanceId, targetHealth := range targetsHealth {
 				for _, instance := range instances {
@@ -127,8 +175,7 @@ func checkTargetHealth(instances []AutoscalingInstance, newLaunchConfig string) 
 		} else {
 			mainLogger.Debugf("Checking loadbalancer target instances health: Waiting 30s (healthy: %d, unhealthy: %d", healthy, unhealthy)
 			time.Sleep(30 * time.Second)
-			waited += 30
 		}
 	}
-	return waited, nil
+	return nil
 }

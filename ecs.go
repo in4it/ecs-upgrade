@@ -11,11 +11,28 @@ var ecsLogger = loggo.GetLogger("ecs")
 
 type ECS struct{}
 
-func (e *ECS) describeContainerInstances(clusterName string) (map[string]string, error) {
+func (e *ECS) listContainerInstances(clusterName string) ([]string, error) {
+	var instanceArns []string
+	svc := ecs.New(session.New())
+	input := &ecs.ListContainerInstancesInput{
+		Cluster: aws.String(clusterName),
+	}
+	result, err := svc.ListContainerInstances(input)
+	if err != nil {
+		ecsLogger.Errorf("%v", err.Error())
+		return instanceArns, err
+	}
+	for _, instance := range result.ContainerInstanceArns {
+		instanceArns = append(instanceArns, aws.StringValue(instance))
+	}
+	return instanceArns, nil
+}
+func (e *ECS) describeContainerInstances(clusterName string, instanceArns []string) (map[string]string, error) {
 	instances := make(map[string]string)
 	svc := ecs.New(session.New())
 	input := &ecs.DescribeContainerInstancesInput{
-		Cluster: aws.String(clusterName),
+		Cluster:            aws.String(clusterName),
+		ContainerInstances: aws.StringSlice(instanceArns),
 	}
 	result, err := svc.DescribeContainerInstances(input)
 	if err != nil {

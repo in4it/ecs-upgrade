@@ -48,7 +48,12 @@ func (a *Autoscaling) newLaunchConfigFromExisting(launchConfig string) (string, 
 }
 
 func (a *Autoscaling) createLaunchConfig(launchConfig string, lc autoscaling.LaunchConfiguration, imageId string) (string, error) {
-	newLaunchConfigName := launchConfig + time.Now().UTC().Format("20060102150405") + "-ecsupgrade"
+	var newLaunchConfigName string
+	if strings.Index(launchConfig, "-ecsupgrade") > 0 {
+		newLaunchConfigName = launchConfig[0:strings.Index(launchConfig, "-ecsupgrade")] + "-ecsupgrade" + time.Now().UTC().Format("20060102150405")
+	} else {
+		newLaunchConfigName = launchConfig + "-ecsupgrade" + time.Now().UTC().Format("20060102150405")
+	}
 	svc := autoscaling.New(session.New())
 
 	input := &autoscaling.CreateLaunchConfigurationInput{
@@ -82,7 +87,7 @@ func (e *Autoscaling) getLaunchConfig(launchConfig string) (autoscaling.LaunchCo
 	svc := autoscaling.New(session.New())
 
 	input := &autoscaling.DescribeLaunchConfigurationsInput{
-		LaunchConfigurationNames: aws.StringSlice([]string{}),
+		LaunchConfigurationNames: aws.StringSlice([]string{launchConfig}),
 	}
 
 	var result autoscaling.LaunchConfiguration
@@ -92,13 +97,8 @@ func (e *Autoscaling) getLaunchConfig(launchConfig string) (autoscaling.LaunchCo
 		func(page *autoscaling.DescribeLaunchConfigurationsOutput, lastPage bool) bool {
 			pageNum++
 			for _, lc := range page.LaunchConfigurations {
-				lcName := aws.StringValue(lc.LaunchConfigurationName)
-				if len(lcName) >= len(launchConfig) {
-					if strings.Compare(launchConfig, lcName[0:len(launchConfig)]) == 0 {
-						autoscalingLogger.Debugf("Found launch configuration: %s", lcName)
-						result = *lc
-					}
-				}
+				autoscalingLogger.Debugf("Found launch configuration: %s", aws.StringValue(lc.LaunchConfigurationName))
+				result = *lc
 			}
 			return pageNum <= 5
 		})
