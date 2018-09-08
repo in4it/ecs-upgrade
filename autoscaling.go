@@ -79,7 +79,7 @@ func (a *Autoscaling) createLaunchConfig(launchConfig string, lc autoscaling.Lau
 	if aws.StringValue(lc.RamdiskId) != "" {
 		input.SetRamdiskId(aws.StringValue(lc.RamdiskId))
 	}
-	autoscalingLogger.Debugf("createLaunchConfiguration with: %+v", input)
+	autoscalingLogger.Debugf("created LaunchConfiguration")
 	_, err := svc.CreateLaunchConfiguration(input)
 	return newLaunchConfigName, err
 }
@@ -263,4 +263,14 @@ func (a *Autoscaling) getAutoscalingInstanceHealth(autoScalingGroupName string) 
 	}
 
 	return instances, nil
+}
+
+func (a *Autoscaling) deleteLaunchConfig(launchConfigName string) error {
+	svc := autoscaling.New(session.New())
+
+	input := &autoscaling.DeleteLaunchConfigurationInput{
+		LaunchConfigurationName: aws.String(launchConfigName),
+	}
+	_, err := svc.DeleteLaunchConfiguration(input)
+	return err
 }

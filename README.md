@@ -15,8 +15,3 @@ Manual docker command:
 docker run -it -e AWS_ACCESS_KEY_ID=... -e AWS_SECRET_ACCESS_KEY=... -e AWS_REGION=... -e ECS_ASG=your-asg -e ECS_CLUSTER=yourcluster in4it/ecs-upgrade
 ```
 
-# Todo
-[ ] Wait for cooldown
-[ ] Delete old launchconfig
-[ ] Test healthchecks on matching ALBs
-[ ] Drain

@@ -22,6 +22,8 @@ func main() {
 }
 
 func mainWithReturnCode() int {
+	e := ECS{}
+	var err error
 	asgName := os.Getenv("ECS_ASG")
 	if len(asgName) == 0 {
 		fmt.Printf("ECS_ASG not set\n")
@@ -62,10 +64,9 @@ func mainWithReturnCode() int {
 	}
 	// wait until new instances are healthy
 	var healthy bool
-	var waited int64
 	var instances []AutoscalingInstance
 	for i := 0; !healthy && i < 25; i++ {
-		instances, err := a.getAutoscalingInstanceHealth(asgName)
+		instances, err = a.getAutoscalingInstanceHealth(asgName)
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
 			return 1
@@ -85,63 +86,86 @@ func mainWithReturnCode() int {
 		} else {
 			mainLogger.Debugf("Checking autoscaling instances health: Waiting 30s")
 			time.Sleep(30 * time.Second)
-			waited += 30
 		}
 	}
+	// wait for new nodes to attach
+	err = e.waitForNewNodes(clusterName, len(instances))
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return 1
+	}
 	// drain
-	err = drain(clusterName, instances, newLaunchConfigName)
+	mainLogger.Debugf("Draining instances")
+	drainedContainerArns, err := drain(clusterName, instances, newLaunchConfigName)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return 1
+	}
+	// wait until nodes are drained
+	mainLogger.Debugf("Wait for Drained instances")
+	err = e.waitForDrainedNode(clusterName, drainedContainerArns)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		return 1
 	}
 	// check target health
+	mainLogger.Debugf("Checking targets health")
 	err = checkTargetHealth(instances, newLaunchConfigName)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		return 1
 	}
-	// wait for cooldown period
 	// scale down
+	mainLogger.Debugf("Scaling down")
 	err = a.scaleAutoscalingGroup(asgName, asg.DesiredCapacity)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		return 1
 	}
 	// delete old launchconfig
+	err = a.deleteLaunchConfig(asg.LaunchConfigurationName)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return 1
+	}
 
+	fmt.Printf("Upgrade completed\n")
 	return 0
 }
 
-func drain(clusterName string, instances []AutoscalingInstance, newLaunchConfig string) error {
+func drain(clusterName string, instances []AutoscalingInstance, newLaunchConfig string) ([]string, error) {
+	var drainedContainerArns []string
 	var instancesToDrain []string
 	e := ECS{}
 	for _, instance := range instances {
 		if instance.LaunchConfig != newLaunchConfig {
 			instancesToDrain = append(instancesToDrain, instance.InstanceId)
+			mainLogger.Debugf("Going to drain %s", instance.InstanceId)
 		}
 	}
 	if float64(len(instancesToDrain)) > math.Ceil(float64(len(instances)/2)) {
-		return fmt.Errorf("Going to drain %d instances out of %d, which is more than 50%", len(instancesToDrain), len(instances))
+		return drainedContainerArns, fmt.Errorf("Going to drain %d instances out of %d, which is more than 50%", len(instancesToDrain), len(instances))
 	}
 	containerInstanceArns, err := e.listContainerInstances(clusterName)
 	if err != nil {
-		return err
+		return drainedContainerArns, err
 	}
 	containerInstances, err := e.describeContainerInstances(clusterName, containerInstanceArns)
 	if err != nil {
-		return err
+		return drainedContainerArns, err
 	}
 	for _, instanceId := range instancesToDrain {
 		if containerId, ok := containerInstances[instanceId]; ok {
 			err = e.drainNode(clusterName, containerId)
 			if err != nil {
-				return err
+				return drainedContainerArns, err
 			}
+			drainedContainerArns = append(drainedContainerArns, containerId)
 		} else {
-			return fmt.Errorf("Couldn't drain instance %s", instanceId)
+			return drainedContainerArns, fmt.Errorf("Couldn't drain instance %s", instanceId)
 		}
 	}
-	return nil
+	return drainedContainerArns, nil
 }
 func checkTargetHealth(instances []AutoscalingInstance, newLaunchConfig string) error {
 	lb := LB{}
@@ -170,7 +194,8 @@ func checkTargetHealth(instances []AutoscalingInstance, newLaunchConfig string) 
 				}
 			}
 		}
-		if (healthy - unhealthy) == 0 {
+		if healthy > 0 && unhealthy == 0 {
+			mainLogger.Debugf("All instances of target groups are healthy")
 			allHealthy = true
 		} else {
 			mainLogger.Debugf("Checking loadbalancer target instances health: Waiting 30s (healthy: %d, unhealthy: %d", healthy, unhealthy)

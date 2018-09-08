@@ -1,7 +1,7 @@
 #
 # Build go project
 #
-FROM golang:1.10 as go-builder
+FROM golang:1.10-alpine as go-builder
 
 WORKDIR /go/src/github.com/in4it/ecs-upgrade/
 
