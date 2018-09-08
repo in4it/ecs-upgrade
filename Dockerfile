@@ -7,7 +7,12 @@ WORKDIR /go/src/github.com/in4it/ecs-upgrade/
 
 COPY . .
 
-RUN curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh && dep ensure
+RUN apk add -u -t build-tools curl git && \
+    curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh && \
+    dep ensure && \
+    apk del build-tools && \
+    rm -rf /var/cache/apk/*
+
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o ecs-upgrade *.go
 
 #
