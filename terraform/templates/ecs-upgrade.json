@@ -1,0 +1,37 @@
+[
+  {
+    "name": "ecs-upgrade",
+    "image": "${IMAGE}",
+    "cpu": 256,
+    "memoryReservation": 512,
+    "essential": true,
+    "mountPoints": [],
+    "portMappings": [],
+    "logConfiguration": {
+          "logDriver": "awslogs",
+          "options": {
+              "awslogs-group": "ecs-upgrade",
+              "awslogs-region": "${AWS_REGION}",
+              "awslogs-stream-prefix": "ecs-upgrade"
+          }
+    },
+    "environment": [
+      {
+        "name": "AWS_REGION",
+        "value": "${AWS_REGION}"
+      },
+      {
+        "name": "ECS_CLUSTER",
+        "value": "${ECS_CLUSTER}"
+      },
+      {
+        "name": "ECS_ASG",
+        "value": "${ECS_ASG}"
+      },
+      {
+        "name": "DEBUG",
+        "value": "${DEBUG}"
+      }
+    ]
+  }
+]
