@@ -200,7 +200,7 @@ resource "aws_security_group" "ecs-upgrade" {
 resource "aws_cloudwatch_event_target" "ecs-upgrade" {
   rule      = "${aws_cloudwatch_event_rule.ecs-upgrade.name}"
   target_id = "RunEcsUpgrade"
-  arn       = "${aws_ecs_cluster.ecs-upgrade.id}"
+  arn       = "${data.aws_ecs_cluster.ecs-upgrade.id}"
   role_arn  = "${aws_iam_role.ecs_events_role.arn}"
   ecs_target {
     group               = "ecs-upgrade"
