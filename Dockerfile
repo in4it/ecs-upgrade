@@ -1,33 +1,23 @@
 #
 # Build go project
 #
-FROM golang:1.10-alpine as go-builder
+FROM golang:1.13-alpine as go-builder
 
-WORKDIR /go/src/github.com/in4it/ecs-upgrade/
+WORKDIR /ecs-upgrade/
 
 COPY . .
 
-RUN apk add -u -t build-tools curl git && \
-    curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh && \
-    dep ensure && \
-    apk del build-tools && \
-    rm -rf /var/cache/apk/*
-
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o ecs-upgrade *.go
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /ecs-upgrade/ecs-upgrade *.go
 
 #
 # Runtime container
 #
 FROM alpine:latest  
 
-ARG SOURCE_COMMIT=unknown
-
 RUN apk --no-cache add ca-certificates && mkdir -p /app
 
 WORKDIR /app
 
-COPY --from=go-builder /go/src/github.com/in4it/ecs-upgrade/ecs-upgrade .
-
-RUN echo ${SOURCE_COMMIT} > source_commit
+COPY --from=go-builder /ecs-upgrade/ecs-upgrade .
 
 CMD ["./ecs-upgrade"]  
