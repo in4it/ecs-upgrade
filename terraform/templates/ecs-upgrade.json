@@ -27,10 +27,6 @@
       {
         "name": "ECS_ASG",
         "value": "${ECS_ASG}"
-      },
-      {
-        "name": "DEBUG",
-        "value": "${DEBUG}"
       }
     ]
   }
