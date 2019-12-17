@@ -7,7 +7,7 @@ data "aws_ecs_cluster" "ecs-upgrade" {
 
 data "template_file" "ecs-upgrade" {
   template = file("${path.module}/templates/ecs-upgrade.json")
-  vars {
+  vars = {
     AWS_REGION  = var.AWS_REGION
     ECS_CLUSTER = var.ECS_CLUSTER
     ECS_ASG     = var.ECS_ASG
