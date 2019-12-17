@@ -6,7 +6,7 @@ data "aws_ecs_cluster" "ecs-upgrade" {
 }
 
 data "template_file" "ecs-upgrade" {
-  template = file("templates/ecs-upgrade.json")
+  template = file("${path.module}/templates/ecs-upgrade.json")
   vars {
     AWS_REGION  = var.AWS_REGION
     ECS_CLUSTER = var.ECS_CLUSTER
@@ -16,11 +16,11 @@ data "template_file" "ecs-upgrade" {
 }
 resource "aws_ecs_task_definition" "ecs-upgrade" {
   family                   = "ecs-upgrade"
-  container_definitions    = "${data.template_file.ecs-upgrade.rendered}"
-  task_role_arn            = "${aws_iam_role.ecs-upgrade.arn}"
+  container_definitions    = data.template_file.ecs-upgrade.rendered
+  task_role_arn            = aws_iam_role.ecs-upgrade.arn
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  execution_role_arn       = "${aws_iam_role.ecs_execution_role.arn}"
+  execution_role_arn       = aws_iam_role.ecs_execution_role.arn
   cpu                      = 256
   memory                   = 512
 }
@@ -47,7 +47,7 @@ EOF
 }
 resource "aws_iam_role_policy" "ecs-upgrade-policy" {
   name   = "ecs-upgrade-policy"
-  role   = "${aws_iam_role.ecs-upgrade.id}"
+  role   = aws_iam_role.ecs-upgrade.id
   policy = <<EOF
 {
   "Version": "2012-10-17",
@@ -100,7 +100,7 @@ EOF
 }
 resource "aws_iam_role_policy" "ecs_execution_role_policy" {
   name   = "ecs-execution-role"
-  role   = "${aws_iam_role.ecs_execution_role.id}"
+  role   = aws_iam_role.ecs_execution_role.id
   policy = <<EOF
 {
   "Version": "2012-10-17",
@@ -143,7 +143,7 @@ EOF
 
 resource "aws_iam_role_policy" "ecs_events_policy" {
   name   = "ecs-events-policy"
-  role   = "${aws_iam_role.ecs_events_role.name}"
+  role   = aws_iam_role.ecs_events_role.name
   policy = <<EOF
 {
     "Version": "2012-10-17",
@@ -198,18 +198,18 @@ resource "aws_security_group" "ecs-upgrade" {
 }
 
 resource "aws_cloudwatch_event_target" "ecs-upgrade" {
-  rule      = "${aws_cloudwatch_event_rule.ecs-upgrade.name}"
+  rule      = aws_cloudwatch_event_rule.ecs-upgrade.name
   target_id = "RunEcsUpgrade"
-  arn       = "${data.aws_ecs_cluster.ecs-upgrade.id}"
-  role_arn  = "${aws_iam_role.ecs_events_role.arn}"
+  arn       = data.aws_ecs_cluster.ecs-upgrade.id
+  role_arn  = aws_iam_role.ecs_events_role.arn
   ecs_target {
     group               = "ecs-upgrade"
     launch_type         = "FARGATE"
     task_count          = 1
-    task_definition_arn = "${aws_ecs_task_definition.ecs-upgrade.arn}"
+    task_definition_arn = aws_ecs_task_definition.ecs-upgrade.arn
     network_configuration {
       subnets          = var.ECS_SUBNETS
-      security_groups  = ["${aws_security_group.ecs-upgrade.id}"]
+      security_groups  = [aws_security_group.ecs-upgrade.id]
       assign_public_ip = true
     }
   }
