@@ -25,6 +25,14 @@
         "value": "${ECS_CLUSTER}"
       },
       {
+        "name": "LAUNCH_TEMPLATES",
+        "value": "${LAUNCH_TEMPLATES}"
+      },
+      {
+        "name": "DEBUG",
+        "value": "${DEBUG}"
+      },
+      {
         "name": "ECS_ASG",
         "value": "${ECS_ASG}"
       }

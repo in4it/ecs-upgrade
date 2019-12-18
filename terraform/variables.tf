@@ -2,6 +2,13 @@ variable "AWS_REGION" {}
 
 variable "ECS_CLUSTER" {}
 
+variable "LAUNCH_TEMPLATES" {}
+
+variable "DEBUG" {
+  type    = string
+  default = true
+}
+
 variable "ECS_ASG" {}
 
 variable "IMAGE" {
