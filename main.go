@@ -123,10 +123,12 @@ func mainWithReturnCode() int {
 		return 1
 	}
 	// delete old launchconfig
-	err = a.deleteLaunchConfig(asg.LaunchConfigurationName)
-	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		return 1
+	if useLaunchTemplates != "true" {
+		err = a.deleteLaunchConfig(asg.LaunchConfigurationName)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			return 1
+		}
 	}
 
 	fmt.Printf("Upgrade completed\n")
