@@ -257,12 +257,11 @@ func (a *Autoscaling) updateAutoscalingLaunchConfig(autoscalingGroupName, launch
 	return nil
 }
 
-func (a *Autoscaling) updateAutoscalingLaunchTemplate(autoscalingGroupName, launchTemplateId string, launchTemplateName string, launchTemplateVersion string) error {
+func (a *Autoscaling) updateAutoscalingLaunchTemplate(autoscalingGroupName, launchTemplateName string, launchTemplateVersion string) error {
 	svc := autoscaling.New(session.New())
 	input := &autoscaling.UpdateAutoScalingGroupInput{
 		AutoScalingGroupName: aws.String(autoscalingGroupName),
 		LaunchTemplate: &autoscaling.LaunchTemplateSpecification{
-			LaunchTemplateId:   aws.String(launchTemplateId),
 			LaunchTemplateName: aws.String(launchTemplateName),
 			Version:            aws.String(launchTemplateVersion),
 		},

@@ -237,7 +237,7 @@ func scaleWithLaunchTemplate(asg AutoscalingGroup) (string, error) {
 	a := Autoscaling{}
 
 	// create new launch config
-	newLaunchTemplateId, newLaunchTemplateName, newLaunchTemplateVersion, err := a.newLaunchTemplateVersion(asg.LaunchTemplateName)
+	_, newLaunchTemplateName, newLaunchTemplateVersion, err := a.newLaunchTemplateVersion(asg.LaunchTemplateName)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		return "", err
@@ -246,7 +246,7 @@ func scaleWithLaunchTemplate(asg AutoscalingGroup) (string, error) {
 		return "", nil
 	}
 	// update autoscaling group
-	err = a.updateAutoscalingLaunchTemplate(asg.AutoscalingGroupName, newLaunchTemplateId, newLaunchTemplateName, newLaunchTemplateVersion)
+	err = a.updateAutoscalingLaunchTemplate(asg.AutoscalingGroupName, newLaunchTemplateName, newLaunchTemplateVersion)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		return "", err
