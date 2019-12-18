@@ -149,8 +149,8 @@ func (a *Autoscaling) createLaunchTemplateVersion(launchTemplateName string, lt 
 
 	autoscalingLogger.Debugf("creating new LaunchTemplateVersion")
 
-	_, err := svc.CreateLaunchTemplateVersion(input)
-	return aws.StringValue(lt.LaunchTemplateId), aws.StringValue(lt.LaunchTemplateName), strconv.FormatInt(aws.Int64Value(lt.VersionNumber), 10), err
+	result, err := svc.CreateLaunchTemplateVersion(input)
+	return aws.StringValue(result.LaunchTemplateVersion.LaunchTemplateId), aws.StringValue(result.LaunchTemplateVersion.LaunchTemplateName), strconv.FormatInt(aws.Int64Value(result.LaunchTemplateVersion.VersionNumber), 10), err
 }
 
 func (e *Autoscaling) getLatestLaunchTemplate(launchTemplateName string) (ec2.LaunchTemplateVersion, error) {
