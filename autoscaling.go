@@ -30,6 +30,7 @@ type AutoscalingInstance struct {
 type AutoscalingGroup struct {
 	AutoscalingGroupName    string
 	LaunchConfigurationName string
+	LaunchTemplateName      string
 	DesiredCapacity         int64
 	MinSize                 int64
 	MaxSize                 int64
@@ -302,6 +303,7 @@ func (a *Autoscaling) describeAutoscalingGroup(autoScalingGroupName string) (Aut
 		DesiredCapacity:         aws.Int64Value(result.AutoScalingGroups[0].DesiredCapacity),
 		MaxSize:                 aws.Int64Value(result.AutoScalingGroups[0].MaxSize),
 		LaunchConfigurationName: aws.StringValue(result.AutoScalingGroups[0].LaunchConfigurationName),
+		LaunchTemplateName:      aws.StringValue(result.AutoScalingGroups[0].LaunchTemplate.LaunchTemplateName),
 	}
 
 	return asg, nil
