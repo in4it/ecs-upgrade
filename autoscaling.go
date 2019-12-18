@@ -1,6 +1,8 @@
 package main
 
 import (
+	"strconv"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -19,15 +21,35 @@ var autoscalingLogger = loggo.GetLogger("autoscaling")
 type Autoscaling struct{}
 
 type AutoscalingInstance struct {
-	InstanceId   string
-	LaunchConfig string
-	HealthStatus string
+	InstanceId            string
+	LaunchConfig          string
+	LaunchTemplateName    string
+	LaunchTemplateVersion string
+	HealthStatus          string
 }
 type AutoscalingGroup struct {
+	AutoscalingGroupName    string
 	LaunchConfigurationName string
 	DesiredCapacity         int64
 	MinSize                 int64
 	MaxSize                 int64
+}
+
+func (a *Autoscaling) newLaunchTemplateVersion(launchTemplateName string) (string, string, string, error) {
+	lt, err := a.getLatestLaunchTemplate(launchTemplateName)
+	if err != nil {
+		return "", "", "", err
+	}
+	imageId, err := a.getECSAMI()
+	if err != nil {
+		return "", "", "", err
+	}
+	if strings.Compare(imageId, aws.StringValue(lt.LaunchTemplateData.ImageId)) == 0 {
+		autoscalingLogger.Infof("ECS Cluster already running latest AMI")
+		return "", "", "", nil
+	}
+
+	return a.createLaunchTemplateVersion(launchTemplateName, lt, imageId)
 }
 
 func (a *Autoscaling) newLaunchConfigFromExisting(launchConfig string) (string, error) {
@@ -83,6 +105,7 @@ func (a *Autoscaling) createLaunchConfig(launchConfig string, lc autoscaling.Lau
 	_, err := svc.CreateLaunchConfiguration(input)
 	return newLaunchConfigName, err
 }
+
 func (e *Autoscaling) getLaunchConfig(launchConfig string) (autoscaling.LaunchConfiguration, error) {
 	svc := autoscaling.New(session.New())
 
@@ -99,6 +122,53 @@ func (e *Autoscaling) getLaunchConfig(launchConfig string) (autoscaling.LaunchCo
 			for _, lc := range page.LaunchConfigurations {
 				autoscalingLogger.Debugf("Found launch configuration: %s", aws.StringValue(lc.LaunchConfigurationName))
 				result = *lc
+			}
+			return pageNum <= 5
+		})
+
+	if err != nil {
+		if aerr, ok := err.(awserr.Error); ok {
+			autoscalingLogger.Errorf(aerr.Error())
+		} else {
+			autoscalingLogger.Errorf(err.Error())
+		}
+	}
+	return result, err
+}
+func (a *Autoscaling) createLaunchTemplateVersion(launchTemplateName string, lt ec2.LaunchTemplateVersion, imageId string) (string, string, string, error) {
+	svc := ec2.New(session.New())
+
+	input := &ec2.CreateLaunchTemplateVersionInput{
+		LaunchTemplateName: aws.String(launchTemplateName),
+		LaunchTemplateData: &ec2.RequestLaunchTemplateData{
+			ImageId: aws.String(imageId),
+		},
+		SourceVersion: aws.String(strconv.FormatInt(aws.Int64Value(lt.VersionNumber), 10)),
+	}
+
+	autoscalingLogger.Debugf("creating new LaunchTemplateVersion")
+
+	_, err := svc.CreateLaunchTemplateVersion(input)
+	return aws.StringValue(lt.LaunchTemplateId), aws.StringValue(lt.LaunchTemplateName), strconv.FormatInt(aws.Int64Value(lt.VersionNumber), 10), err
+}
+
+func (e *Autoscaling) getLatestLaunchTemplate(launchTemplateName string) (ec2.LaunchTemplateVersion, error) {
+	svc := ec2.New(session.New())
+
+	input := &ec2.DescribeLaunchTemplateVersionsInput{
+		LaunchTemplateName: aws.String(launchTemplateName),
+		Versions:           aws.StringSlice([]string{"$Latest"}),
+	}
+
+	var result ec2.LaunchTemplateVersion
+
+	pageNum := 0
+	err := svc.DescribeLaunchTemplateVersionsPages(input,
+		func(page *ec2.DescribeLaunchTemplateVersionsOutput, lastPage bool) bool {
+			pageNum++
+			for _, lt := range page.LaunchTemplateVersions {
+				autoscalingLogger.Debugf("Found launch configuration: %s", aws.StringValue(lt.LaunchTemplateName))
+				result = *lt
 			}
 			return pageNum <= 5
 		})
@@ -186,6 +256,28 @@ func (a *Autoscaling) updateAutoscalingLaunchConfig(autoscalingGroupName, launch
 	return nil
 }
 
+func (a *Autoscaling) updateAutoscalingLaunchTemplate(autoscalingGroupName, launchTemplateId string, launchTemplateName string, launchTemplateVersion string) error {
+	svc := autoscaling.New(session.New())
+	input := &autoscaling.UpdateAutoScalingGroupInput{
+		AutoScalingGroupName: aws.String(autoscalingGroupName),
+		LaunchTemplate: &autoscaling.LaunchTemplateSpecification{
+			LaunchTemplateId:   aws.String(launchTemplateId),
+			LaunchTemplateName: aws.String(launchTemplateName),
+			Version:            aws.String(launchTemplateVersion),
+		},
+	}
+	_, err := svc.UpdateAutoScalingGroup(input)
+	if err != nil {
+		if aerr, ok := err.(awserr.Error); ok {
+			autoscalingLogger.Errorf("%v", aerr.Error())
+		} else {
+			autoscalingLogger.Errorf("%v", err.Error())
+		}
+		return err
+	}
+	return nil
+}
+
 func (a *Autoscaling) describeAutoscalingGroup(autoScalingGroupName string) (AutoscalingGroup, error) {
 	svc := autoscaling.New(session.New())
 	input := &autoscaling.DescribeAutoScalingGroupsInput{
@@ -205,6 +297,7 @@ func (a *Autoscaling) describeAutoscalingGroup(autoScalingGroupName string) (Aut
 	}
 
 	asg := AutoscalingGroup{
+		AutoscalingGroupName:    autoScalingGroupName,
 		MinSize:                 aws.Int64Value(result.AutoScalingGroups[0].MinSize),
 		DesiredCapacity:         aws.Int64Value(result.AutoScalingGroups[0].DesiredCapacity),
 		MaxSize:                 aws.Int64Value(result.AutoScalingGroups[0].MaxSize),
@@ -246,9 +339,11 @@ func (a *Autoscaling) getAutoscalingInstanceHealth(autoScalingGroupName string) 
 			pageNum++
 			for _, instance := range page.AutoScalingInstances {
 				instances = append(instances, AutoscalingInstance{
-					InstanceId:   aws.StringValue(instance.InstanceId),
-					LaunchConfig: aws.StringValue(instance.LaunchConfigurationName),
-					HealthStatus: aws.StringValue(instance.HealthStatus),
+					InstanceId:            aws.StringValue(instance.InstanceId),
+					LaunchConfig:          aws.StringValue(instance.LaunchConfigurationName),
+					LaunchTemplateName:    aws.StringValue(instance.LaunchTemplate.LaunchTemplateName),
+					LaunchTemplateVersion: aws.StringValue(instance.LaunchTemplate.Version),
+					HealthStatus:          aws.StringValue(instance.HealthStatus),
 				})
 			}
 			return pageNum <= 10

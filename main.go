@@ -1,6 +1,8 @@
 package main
 
 import (
+	"strings"
+
 	"github.com/juju/loggo"
 
 	"fmt"
@@ -34,6 +36,7 @@ func mainWithReturnCode() int {
 		fmt.Printf("ECS_CLUSTER not set\n")
 		return 1
 	}
+	useLaunchTemplates := os.Getenv("LAUNCH_TEMPLATES")
 	a := Autoscaling{}
 	// get asg
 	asg, err := a.describeAutoscalingGroup(asgName)
@@ -41,26 +44,23 @@ func mainWithReturnCode() int {
 		fmt.Printf("Error: %v\n", err)
 		return 1
 	}
-	// create new launch config
-	newLaunchConfigName, err := a.newLaunchConfigFromExisting(asg.LaunchConfigurationName)
-	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		return 1
+	var newLaunchIdentifier string
+	if useLaunchTemplates == "true" {
+		newLaunchIdentifier, err = scaleWithLaunchTemplate(asg)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			return 1
+		}
+	} else {
+		newLaunchIdentifier, err = scaleWithLaunchConfig(asg)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			return 1
+		}
 	}
-	if newLaunchConfigName == "" {
+	if newLaunchIdentifier == "" {
+		fmt.Printf("Launch configuration is already at latest version")
 		return 0
-	}
-	// update autoscaling group
-	err = a.updateAutoscalingLaunchConfig(asgName, newLaunchConfigName)
-	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		return 1
-	}
-	// scale
-	err = a.scaleAutoscalingGroup(asgName, asg.DesiredCapacity*2)
-	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		return 1
 	}
 	// wait until new instances are healthy
 	var healthy bool
@@ -73,7 +73,7 @@ func mainWithReturnCode() int {
 		}
 		var healthyInstances int64
 		for _, instance := range instances {
-			if instance.LaunchConfig == newLaunchConfigName {
+			if checkInstanceLaunchConfigOrTemplate(useLaunchTemplates, instance, newLaunchIdentifier) {
 				if instance.HealthStatus == "HEALTHY" {
 					healthyInstances += 1
 				} else {
@@ -96,7 +96,7 @@ func mainWithReturnCode() int {
 	}
 	// drain
 	mainLogger.Debugf("Draining instances")
-	drainedContainerArns, err := drain(clusterName, instances, newLaunchConfigName)
+	drainedContainerArns, err := drain(clusterName, instances, newLaunchIdentifier, useLaunchTemplates)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		return 1
@@ -110,7 +110,7 @@ func mainWithReturnCode() int {
 	}
 	// check target health
 	mainLogger.Debugf("Checking targets health")
-	err = checkTargetHealth(instances, newLaunchConfigName)
+	err = checkTargetHealth(instances, newLaunchIdentifier, useLaunchTemplates)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		return 1
@@ -133,12 +133,12 @@ func mainWithReturnCode() int {
 	return 0
 }
 
-func drain(clusterName string, instances []AutoscalingInstance, newLaunchConfig string) ([]string, error) {
+func drain(clusterName string, instances []AutoscalingInstance, newLaunchIdentifier string, useLaunchTemplates string) ([]string, error) {
 	var drainedContainerArns []string
 	var instancesToDrain []string
 	e := ECS{}
 	for _, instance := range instances {
-		if instance.LaunchConfig != newLaunchConfig {
+		if checkInstanceLaunchConfigOrTemplate(useLaunchTemplates, instance, newLaunchIdentifier) {
 			instancesToDrain = append(instancesToDrain, instance.InstanceId)
 			mainLogger.Debugf("Going to drain %s", instance.InstanceId)
 		}
@@ -167,7 +167,7 @@ func drain(clusterName string, instances []AutoscalingInstance, newLaunchConfig 
 	}
 	return drainedContainerArns, nil
 }
-func checkTargetHealth(instances []AutoscalingInstance, newLaunchConfig string) error {
+func checkTargetHealth(instances []AutoscalingInstance, newLaunchIdentifier string, useLaunchTemplates string) error {
 	lb := LB{}
 	targetGroups, err := lb.getTargets()
 	if err != nil {
@@ -183,7 +183,7 @@ func checkTargetHealth(instances []AutoscalingInstance, newLaunchConfig string) 
 			}
 			for instanceId, targetHealth := range targetsHealth {
 				for _, instance := range instances {
-					if instance.InstanceId == instanceId && instance.LaunchConfig == newLaunchConfig {
+					if instance.InstanceId == instanceId && checkInstanceLaunchConfigOrTemplate(useLaunchTemplates, instance, newLaunchIdentifier) {
 						mainLogger.Debugf("Found instance %s in target group %s with health %s", instanceId, targetGroup, targetHealth)
 						if targetHealth == "healthy" {
 							healthy += 1
@@ -203,4 +203,75 @@ func checkTargetHealth(instances []AutoscalingInstance, newLaunchConfig string) 
 		}
 	}
 	return nil
+}
+
+func scaleWithLaunchConfig(asg AutoscalingGroup) (string, error) {
+	a := Autoscaling{}
+
+	// create new launch config
+	newLaunchConfigName, err := a.newLaunchConfigFromExisting(asg.LaunchConfigurationName)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return "", err
+	}
+	if newLaunchConfigName == "" {
+		return "", fmt.Errorf("New Launch config name is empty (previous launch config name: %s)", asg.LaunchConfigurationName)
+	}
+	// update autoscaling group
+	err = a.updateAutoscalingLaunchConfig(asg.AutoscalingGroupName, newLaunchConfigName)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return "", err
+	}
+	// scale
+	err = a.scaleAutoscalingGroup(asg.AutoscalingGroupName, asg.DesiredCapacity*2)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return "", err
+	}
+	return newLaunchConfigName, nil
+}
+func scaleWithLaunchTemplate(asg AutoscalingGroup) (string, error) {
+	a := Autoscaling{}
+
+	// create new launch config
+	newLaunchTemplateId, newLaunchTemplateName, newLaunchTemplateVersion, err := a.newLaunchTemplateVersion(asg.LaunchConfigurationName)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return "", err
+	}
+	if newLaunchTemplateName == "" {
+		return "", nil
+	}
+	// update autoscaling group
+	err = a.updateAutoscalingLaunchTemplate(asg.AutoscalingGroupName, newLaunchTemplateId, newLaunchTemplateName, newLaunchTemplateVersion)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return "", err
+	}
+	// scale
+	err = a.scaleAutoscalingGroup(asg.AutoscalingGroupName, asg.DesiredCapacity*2)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return "", err
+	}
+	return newLaunchTemplateName + ":" + newLaunchTemplateVersion, nil
+}
+
+func checkInstanceLaunchConfigOrTemplate(useLaunchTemplates string, instance AutoscalingInstance, newName string) bool {
+	if useLaunchTemplates == "true" {
+		s := strings.Split(newName, ":")
+		if len(s) != 2 {
+			return false
+		}
+		if instance.LaunchTemplateName == s[0] && instance.LaunchTemplateVersion == s[1] {
+			return true
+		}
+	} else {
+		if instance.LaunchConfig == newName {
+			return true
+		}
+	}
+	return false
+
 }
