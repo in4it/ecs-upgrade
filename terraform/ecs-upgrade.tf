@@ -62,7 +62,7 @@ resource "aws_iam_role_policy" "ecs-upgrade-policy" {
         "ecs:Update*",
         "ec2:*",
         "autoscaling:*",
-        "elasticloadbalancing:Describe*",
+        "elasticloadbalancing:Describe*"
       ],
       "Resource": "*"
     },
