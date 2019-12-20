@@ -110,7 +110,7 @@ func mainWithReturnCode() int {
 	}
 	// check target health
 	mainLogger.Debugf("Checking targets health")
-	err = checkTargetHealth(instances, newLaunchIdentifier, useLaunchTemplates)
+	err = checkTargetHealth(asgName, newLaunchIdentifier, useLaunchTemplates)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		return 1
@@ -169,28 +169,44 @@ func drain(clusterName string, instances []AutoscalingInstance, newLaunchIdentif
 	}
 	return drainedContainerArns, nil
 }
-func checkTargetHealth(instances []AutoscalingInstance, newLaunchIdentifier string, useLaunchTemplates string) error {
+func checkTargetHealth(asgName string, newLaunchIdentifier string, useLaunchTemplates string) error {
 	lb := LB{}
+	a := Autoscaling{}
 	targetGroups, err := lb.getTargets()
 	if err != nil {
 		return err
 	}
 	var allHealthy bool
 	for i := 0; !allHealthy && i < 25; i++ {
+		// refresh instances
+		instances, err := a.getAutoscalingInstanceHealth(asgName)
+		if err != nil {
+			return err
+		}
+
+		// print instances
+		for _, instance := range instances {
+			if checkInstanceLaunchConfigOrTemplate(useLaunchTemplates, instance, newLaunchIdentifier) {
+				autoscalingLogger.Debugf("checkTargetHealth: retrieved instance %s with IPs (%s)", instance.InstanceId, strings.Join(instance.IPs, ","))
+			}
+		}
+
+		// check health
 		var unhealthy, healthy int64
 		for _, targetGroup := range targetGroups {
 			targetsHealth, err := lb.getTargetHealth(targetGroup)
 			if err != nil {
 				return err
 			}
-			for instanceId, targetHealth := range targetsHealth {
+			for id, targetHealth := range targetsHealth {
 				for _, instance := range instances {
-					if instance.InstanceId == instanceId && checkInstanceLaunchConfigOrTemplate(useLaunchTemplates, instance, newLaunchIdentifier) {
-						mainLogger.Debugf("Found instance %s in target group %s with health %s", instanceId, targetGroup, targetHealth)
+					// id without awsvpc is instanceID, id with awsVPC is IP address. Let's compare both
+					if (instance.InstanceId == id || stringInSlice(id, instance.IPs)) && checkInstanceLaunchConfigOrTemplate(useLaunchTemplates, instance, newLaunchIdentifier) {
+						mainLogger.Debugf("Found instance %s in target group %s with health %s", id, targetGroup, targetHealth)
 						if targetHealth == "healthy" {
-							healthy += 1
+							healthy++
 						} else {
-							unhealthy += 1
+							unhealthy++
 						}
 					}
 				}
@@ -200,7 +216,7 @@ func checkTargetHealth(instances []AutoscalingInstance, newLaunchIdentifier stri
 			mainLogger.Debugf("All instances of target groups are healthy")
 			allHealthy = true
 		} else {
-			mainLogger.Debugf("Checking loadbalancer target instances health: Waiting 30s (healthy: %d, unhealthy: %d", healthy, unhealthy)
+			mainLogger.Debugf("Checking loadbalancer target instances health: Waiting 30s (healthy: %d, unhealthy: %d)", healthy, unhealthy)
 			time.Sleep(30 * time.Second)
 		}
 	}
@@ -276,4 +292,12 @@ func checkInstanceLaunchConfigOrTemplate(useLaunchTemplates string, instance Aut
 	}
 	return false
 
+}
+func stringInSlice(a string, list []string) bool {
+	for _, b := range list {
+		if b == a {
+			return true
+		}
+	}
+	return false
 }

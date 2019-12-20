@@ -22,6 +22,7 @@ type Autoscaling struct{}
 
 type AutoscalingInstance struct {
 	InstanceId            string
+	IPs                   []string
 	LaunchConfig          string
 	LaunchTemplateName    string
 	LaunchTemplateVersion string
@@ -358,6 +359,19 @@ func (a *Autoscaling) getAutoscalingInstanceHealth(autoScalingGroupName string) 
 		}
 	}
 
+	// get IPs
+	instancesIPs, err := a.getInstancesIPs(instanceIds)
+	if err != nil {
+		autoscalingLogger.Errorf("Could not determine instance IPs")
+	}
+	for instanceID, IPs := range instancesIPs {
+		for k, instance := range instances {
+			if instance.InstanceId == instanceID {
+				instances[k].IPs = IPs
+			}
+		}
+	}
+
 	return instances, nil
 }
 
@@ -369,4 +383,40 @@ func (a *Autoscaling) deleteLaunchConfig(launchConfigName string) error {
 	}
 	_, err := svc.DeleteLaunchConfiguration(input)
 	return err
+}
+
+func (a *Autoscaling) getInstancesIPs(instanceIds []string) (map[string][]string, error) {
+	instances := make(map[string][]string)
+
+	svc := ec2.New(session.New())
+
+	// describe instances
+	input := &ec2.DescribeInstancesInput{
+		InstanceIds: aws.StringSlice(instanceIds),
+	}
+
+	pageNum := 0
+	err := svc.DescribeInstancesPages(input,
+		func(page *ec2.DescribeInstancesOutput, lastPage bool) bool {
+			pageNum++
+			for _, reservation := range page.Reservations {
+				for _, instance := range reservation.Instances {
+					var IPs []string
+					for _, networkInterface := range instance.NetworkInterfaces {
+						IPs = append(IPs, aws.StringValue(networkInterface.PrivateIpAddress))
+					}
+					instances[aws.StringValue(instance.InstanceId)] = IPs
+				}
+			}
+			return pageNum <= 10
+		})
+
+	if err != nil {
+		if aerr, ok := err.(awserr.Error); ok {
+			autoscalingLogger.Errorf(aerr.Error())
+		} else {
+			autoscalingLogger.Errorf(err.Error())
+		}
+	}
+	return instances, nil
 }
