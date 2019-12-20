@@ -61,9 +61,12 @@ resource "aws_iam_role_policy" "ecs-upgrade-policy" {
         "ecs:List*",
         "ecs:Update*",
         "ec2:Describe*",
+        "ec2:RunInstances",
         "ec2:CreateLaunchTemplateVersion",
-        "ec2:ModifyLaunchTemplate",
-        "autoscaling:*",
+        "autoscaling:UpdateAutoScalingGroup",
+        "autoscaling:CreateLaunchConfiguration",
+        "autoscaling:UpdateAutoScalingGroup",
+        "autoscaling:DeleteLaunchConfiguration",
         "elasticloadbalancing:Describe*"
       ],
       "Resource": "*"
