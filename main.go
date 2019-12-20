@@ -140,7 +140,7 @@ func drain(clusterName string, instances []AutoscalingInstance, newLaunchIdentif
 	var instancesToDrain []string
 	e := ECS{}
 	for _, instance := range instances {
-		if checkInstanceLaunchConfigOrTemplate(useLaunchTemplates, instance, newLaunchIdentifier) {
+		if !checkInstanceLaunchConfigOrTemplate(useLaunchTemplates, instance, newLaunchIdentifier) {
 			instancesToDrain = append(instancesToDrain, instance.InstanceId)
 			mainLogger.Debugf("Going to drain %s", instance.InstanceId)
 		}
