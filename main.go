@@ -206,7 +206,7 @@ func checkTargetHealth(asgName, newLaunchIdentifier, useLaunchTemplates, cluster
 		// print instances
 		for _, instance := range instances {
 			if checkInstanceLaunchConfigOrTemplate(useLaunchTemplates, instance, newLaunchIdentifier) {
-				instanceIPList := IPsPerContainerInstance[containerInstances[instance.InstanceId]]
+				instanceIPList := getInstanceIPList(containerInstances, instance.InstanceId, IPsPerContainerInstance)
 				autoscalingLogger.Debugf("checkTargetHealth: retrieved instance %s with IPs (%s) and AWSVPC IPs (%s)", instance.InstanceId, strings.Join(instance.IPs, ","), strings.Join(instanceIPList, ","))
 			}
 		}
@@ -221,7 +221,7 @@ func checkTargetHealth(asgName, newLaunchIdentifier, useLaunchTemplates, cluster
 			for id, targetHealth := range targetsHealth {
 				for _, instance := range instances {
 					// id without awsvpc is instanceID, id with awsVPC is IP address. Let's compare both
-					instanceIPList := IPsPerContainerInstance[containerInstances[instance.InstanceId]]
+					instanceIPList := getInstanceIPList(containerInstances, instance.InstanceId, IPsPerContainerInstance)
 					if (instance.InstanceId == id || stringInSlice(id, instance.IPs) || stringInSlice(id, instanceIPList)) && checkInstanceLaunchConfigOrTemplate(useLaunchTemplates, instance, newLaunchIdentifier) {
 						mainLogger.Debugf("Found instance %s in target group %s with health %s", id, targetGroup, targetHealth)
 						if targetHealth == "healthy" {
@@ -242,6 +242,15 @@ func checkTargetHealth(asgName, newLaunchIdentifier, useLaunchTemplates, cluster
 		}
 	}
 	return nil
+}
+
+func getInstanceIPList(containerInstances map[string]string, instanceID string, IPsPerContainerInstance map[string][]string) []string {
+	if containerARN, ok := containerInstances[instanceID]; ok {
+		if instanceIPList, ok2 := IPsPerContainerInstance[containerARN]; ok2 {
+			return instanceIPList
+		}
+	}
+	return []string{}
 }
 
 func scaleWithLaunchConfig(asg AutoscalingGroup) (string, error) {
