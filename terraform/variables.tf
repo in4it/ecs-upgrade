@@ -27,3 +27,7 @@ variable "EC2_IAM_ROLE_ARN" {}
 variable "EGRESS_CIDR" {
   default = "0.0.0.0/0"
 }
+
+variable "ASSIGN_PUBLIC_IP" {
+  default = false
+}

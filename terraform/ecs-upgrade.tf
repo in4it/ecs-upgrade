@@ -215,7 +215,7 @@ resource "aws_cloudwatch_event_target" "ecs-upgrade" {
     network_configuration {
       subnets          = var.ECS_SUBNETS
       security_groups  = [aws_security_group.ecs-upgrade.id]
-      assign_public_ip = true
+      assign_public_ip = var.ASSIGN_PUBLIC_IP
     }
   }
 }
