@@ -1,6 +1,8 @@
 package main
 
 import (
+	"math"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ecs"
@@ -47,6 +49,7 @@ func (e *ECS) describeContainerInstances(clusterName string, instanceArns []stri
 	}
 	return instances, nil
 }
+
 func (e *ECS) drainNode(clusterName, instance string) error {
 	svc := ecs.New(session.New())
 	input := &ecs.UpdateContainerInstancesStateInput{
@@ -130,4 +133,64 @@ func (e *ECS) waitForNewNodes(clusterName string, asgInstancesCount int) error {
 		}
 	}
 	return nil
+}
+
+func (e *ECS) ListTasks(clusterName, desiredStatus string) ([]string, error) {
+	svc := ecs.New(session.New())
+	var tasks []*string
+
+	input := &ecs.ListTasksInput{
+		Cluster:       aws.String(clusterName),
+		DesiredStatus: aws.String(desiredStatus),
+	}
+
+	pageNum := 0
+	err := svc.ListTasksPages(input,
+		func(page *ecs.ListTasksOutput, lastPage bool) bool {
+			pageNum++
+			tasks = append(tasks, page.TaskArns...)
+			return pageNum <= 100
+		})
+
+	if err != nil {
+		ecsLogger.Errorf(err.Error())
+	}
+	return aws.StringValueSlice(tasks), err
+}
+
+func (e *ECS) getTaskIPsPerContainerInstance(clusterName string, tasks []string) (map[string][]string, error) {
+
+	result := make(map[string][]string)
+	svc := ecs.New(session.New())
+
+	// fetch per 100
+	var y float64 = float64(len(tasks)) / 100
+	for i := 0; i < int(math.Ceil(y)); i++ {
+
+		f := i * 100
+		t := int(math.Min(float64(100+100*i), float64(len(tasks))))
+
+		input := &ecs.DescribeTasksInput{
+			Cluster: aws.String(clusterName),
+			Tasks:   aws.StringSlice(tasks[f:t]),
+		}
+
+		tasks, err := svc.DescribeTasks(input)
+		if err != nil {
+			ecsLogger.Errorf(err.Error())
+			return result, err
+		}
+		for _, task := range tasks.Tasks {
+			for _, attachment := range task.Attachments {
+				for _, detail := range attachment.Details {
+					if aws.StringValue(detail.Name) == "privateIPv4Address" {
+						result[aws.StringValue(task.ContainerInstanceArn)] = append(result[aws.StringValue(task.ContainerInstanceArn)], aws.StringValue(detail.Value))
+					}
+
+				}
+			}
+
+		}
+	}
+	return result, nil
 }
