@@ -50,24 +50,6 @@ func (e *ECS) describeContainerInstances(clusterName string, instanceArns []stri
 	return instances, nil
 }
 
-func (e *ECS) describeContainerInstancesReverseMap(clusterName string, instanceArns []string) (map[string]string, error) {
-	instances := make(map[string]string)
-	svc := ecs.New(session.New())
-	input := &ecs.DescribeContainerInstancesInput{
-		Cluster:            aws.String(clusterName),
-		ContainerInstances: aws.StringSlice(instanceArns),
-	}
-	result, err := svc.DescribeContainerInstances(input)
-	if err != nil {
-		ecsLogger.Errorf("%v", err.Error())
-		return instances, err
-	}
-	for _, instance := range result.ContainerInstances {
-		instances[aws.StringValue(instance.ContainerInstanceArn)] = aws.StringValue(instance.Ec2InstanceId)
-	}
-	return instances, nil
-}
-
 func (e *ECS) drainNode(clusterName, instance string) error {
 	svc := ecs.New(session.New())
 	input := &ecs.UpdateContainerInstancesStateInput{

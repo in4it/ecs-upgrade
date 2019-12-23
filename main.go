@@ -184,7 +184,7 @@ func checkTargetHealth(asgName, newLaunchIdentifier, useLaunchTemplates, cluster
 	if err != nil {
 		return err
 	}
-	containerInstances, err := e.describeContainerInstancesReverseMap(clusterName, containerInstanceArns)
+	containerInstances, err := e.describeContainerInstances(clusterName, containerInstanceArns)
 	if err != nil {
 		return err
 	}
@@ -201,6 +201,7 @@ func checkTargetHealth(asgName, newLaunchIdentifier, useLaunchTemplates, cluster
 		if err != nil {
 			return err
 		}
+
 		IPsPerContainerInstance, err := e.getTaskIPsPerContainerInstance(clusterName, tasks)
 
 		// print instances
