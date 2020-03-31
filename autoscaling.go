@@ -191,7 +191,7 @@ func (a *Autoscaling) getECSAMI() (string, error) {
 	input := &ec2.DescribeImagesInput{
 		Owners: []*string{aws.String("591542846629")}, // AWS
 		Filters: []*ec2.Filter{
-			{Name: aws.String("name"), Values: []*string{aws.String("amzn-ami-*-amazon-ecs-optimized")}},
+			{Name: aws.String("name"), Values: []*string{aws.String("amzn2-ami-ecs-*")}},
 			{Name: aws.String("virtualization-type"), Values: []*string{aws.String("hvm")}},
 		},
 	}
