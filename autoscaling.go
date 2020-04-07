@@ -193,6 +193,7 @@ func (a *Autoscaling) getECSAMI() (string, error) {
 		Filters: []*ec2.Filter{
 			{Name: aws.String("name"), Values: []*string{aws.String("amzn2-ami-ecs-*")}},
 			{Name: aws.String("virtualization-type"), Values: []*string{aws.String("hvm")}},
+			{Name: aws.String("architecture"), Values: []*string{aws.String("x86_64")}},
 		},
 	}
 	result, err := svc.DescribeImages(input)
