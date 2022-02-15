@@ -364,6 +364,11 @@ func (a *Autoscaling) getAutoscalingInstanceHealth(autoScalingGroupName string) 
 				autoscalingLogger.Errorf(err.Error())
 			}
 		}
+
+		if len(instanceIdsSlice) > batchSize {
+			autoscalingLogger.Infof("Sleeping 10s to avoid ratelimiting (instance size: %d)", len(instanceIdsSlice))
+			time.Sleep(10 * time.Second)
+		}
 	}
 
 	// get IPs
