@@ -18,7 +18,9 @@ import (
 // logging
 var autoscalingLogger = loggo.GetLogger("autoscaling")
 
-type Autoscaling struct{}
+type Autoscaling struct {
+	svcAutoscaling *autoscaling.AutoScaling
+}
 
 type AutoscalingInstance struct {
 	InstanceId            string
@@ -35,6 +37,12 @@ type AutoscalingGroup struct {
 	DesiredCapacity         int64
 	MinSize                 int64
 	MaxSize                 int64
+}
+
+func NewAutoscaling() Autoscaling {
+	return Autoscaling{
+		svcAutoscaling: autoscaling.New(session.New()),
+	}
 }
 
 func (a *Autoscaling) newLaunchTemplateVersion(launchTemplateName string) (string, string, string, error) {
@@ -78,7 +86,6 @@ func (a *Autoscaling) createLaunchConfig(launchConfig string, lc autoscaling.Lau
 	} else {
 		newLaunchConfigName = launchConfig + "-ecsupgrade" + time.Now().UTC().Format("20060102150405")
 	}
-	svc := autoscaling.New(session.New())
 
 	input := &autoscaling.CreateLaunchConfigurationInput{
 		AssociatePublicIpAddress:     lc.AssociatePublicIpAddress,
@@ -104,13 +111,11 @@ func (a *Autoscaling) createLaunchConfig(launchConfig string, lc autoscaling.Lau
 		input.SetRamdiskId(aws.StringValue(lc.RamdiskId))
 	}
 	autoscalingLogger.Debugf("created LaunchConfiguration")
-	_, err := svc.CreateLaunchConfiguration(input)
+	_, err := a.svcAutoscaling.CreateLaunchConfiguration(input)
 	return newLaunchConfigName, err
 }
 
-func (e *Autoscaling) getLaunchConfig(launchConfig string) (autoscaling.LaunchConfiguration, error) {
-	svc := autoscaling.New(session.New())
-
+func (a *Autoscaling) getLaunchConfig(launchConfig string) (autoscaling.LaunchConfiguration, error) {
 	input := &autoscaling.DescribeLaunchConfigurationsInput{
 		LaunchConfigurationNames: aws.StringSlice([]string{launchConfig}),
 	}
@@ -118,7 +123,7 @@ func (e *Autoscaling) getLaunchConfig(launchConfig string) (autoscaling.LaunchCo
 	var result autoscaling.LaunchConfiguration
 
 	pageNum := 0
-	err := svc.DescribeLaunchConfigurationsPages(input,
+	err := a.svcAutoscaling.DescribeLaunchConfigurationsPages(input,
 		func(page *autoscaling.DescribeLaunchConfigurationsOutput, lastPage bool) bool {
 			pageNum++
 			for _, lc := range page.LaunchConfigurations {
@@ -223,12 +228,11 @@ func (a *Autoscaling) getECSAMI() (string, error) {
 }
 
 func (a *Autoscaling) scaleAutoscalingGroup(autoScalingGroupName string, desired int64) error {
-	svc := autoscaling.New(session.New())
 	input := &autoscaling.UpdateAutoScalingGroupInput{
 		AutoScalingGroupName: aws.String(autoScalingGroupName),
 		DesiredCapacity:      aws.Int64(desired),
 	}
-	_, err := svc.UpdateAutoScalingGroup(input)
+	_, err := a.svcAutoscaling.UpdateAutoScalingGroup(input)
 	if err != nil {
 		if aerr, ok := err.(awserr.Error); ok {
 			autoscalingLogger.Errorf("%v", aerr.Error())
@@ -241,12 +245,11 @@ func (a *Autoscaling) scaleAutoscalingGroup(autoScalingGroupName string, desired
 }
 
 func (a *Autoscaling) updateAutoscalingLaunchConfig(autoscalingGroupName, launchConfig string) error {
-	svc := autoscaling.New(session.New())
 	input := &autoscaling.UpdateAutoScalingGroupInput{
 		AutoScalingGroupName:    aws.String(autoscalingGroupName),
 		LaunchConfigurationName: aws.String(launchConfig),
 	}
-	_, err := svc.UpdateAutoScalingGroup(input)
+	_, err := a.svcAutoscaling.UpdateAutoScalingGroup(input)
 	if err != nil {
 		if aerr, ok := err.(awserr.Error); ok {
 			autoscalingLogger.Errorf("%v", aerr.Error())
@@ -259,7 +262,6 @@ func (a *Autoscaling) updateAutoscalingLaunchConfig(autoscalingGroupName, launch
 }
 
 func (a *Autoscaling) updateAutoscalingLaunchTemplate(autoscalingGroupName, launchTemplateName string, launchTemplateVersion string) error {
-	svc := autoscaling.New(session.New())
 	input := &autoscaling.UpdateAutoScalingGroupInput{
 		AutoScalingGroupName: aws.String(autoscalingGroupName),
 		LaunchTemplate: &autoscaling.LaunchTemplateSpecification{
@@ -267,7 +269,7 @@ func (a *Autoscaling) updateAutoscalingLaunchTemplate(autoscalingGroupName, laun
 			Version:            aws.String(launchTemplateVersion),
 		},
 	}
-	_, err := svc.UpdateAutoScalingGroup(input)
+	_, err := a.svcAutoscaling.UpdateAutoScalingGroup(input)
 	if err != nil {
 		if aerr, ok := err.(awserr.Error); ok {
 			autoscalingLogger.Errorf("%v", aerr.Error())
@@ -280,11 +282,10 @@ func (a *Autoscaling) updateAutoscalingLaunchTemplate(autoscalingGroupName, laun
 }
 
 func (a *Autoscaling) describeAutoscalingGroup(autoScalingGroupName string) (AutoscalingGroup, error) {
-	svc := autoscaling.New(session.New())
 	input := &autoscaling.DescribeAutoScalingGroupsInput{
 		AutoScalingGroupNames: []*string{aws.String(autoScalingGroupName)},
 	}
-	result, err := svc.DescribeAutoScalingGroups(input)
+	result, err := a.svcAutoscaling.DescribeAutoScalingGroups(input)
 	if err != nil {
 		if aerr, ok := err.(awserr.Error); ok {
 			autoscalingLogger.Errorf("%v", aerr.Error())
@@ -312,11 +313,10 @@ func (a *Autoscaling) describeAutoscalingGroup(autoScalingGroupName string) (Aut
 func (a *Autoscaling) getAutoscalingInstanceHealth(autoScalingGroupName string) ([]AutoscalingInstance, error) {
 	var instances []AutoscalingInstance
 
-	svc := autoscaling.New(session.New())
 	input := &autoscaling.DescribeAutoScalingGroupsInput{
 		AutoScalingGroupNames: []*string{aws.String(autoScalingGroupName)},
 	}
-	result, err := svc.DescribeAutoScalingGroups(input)
+	result, err := a.svcAutoscaling.DescribeAutoScalingGroups(input)
 	if err != nil {
 		autoscalingLogger.Errorf("%v", err.Error())
 		return instances, err
@@ -336,7 +336,7 @@ func (a *Autoscaling) getAutoscalingInstanceHealth(autoScalingGroupName string) 
 	}
 
 	pageNum := 0
-	err = svc.DescribeAutoScalingInstancesPages(input2,
+	err = a.svcAutoscaling.DescribeAutoScalingInstancesPages(input2,
 		func(page *autoscaling.DescribeAutoScalingInstancesOutput, lastPage bool) bool {
 			pageNum++
 			for _, instance := range page.AutoScalingInstances {
@@ -376,12 +376,10 @@ func (a *Autoscaling) getAutoscalingInstanceHealth(autoScalingGroupName string) 
 }
 
 func (a *Autoscaling) deleteLaunchConfig(launchConfigName string) error {
-	svc := autoscaling.New(session.New())
-
 	input := &autoscaling.DeleteLaunchConfigurationInput{
 		LaunchConfigurationName: aws.String(launchConfigName),
 	}
-	_, err := svc.DeleteLaunchConfiguration(input)
+	_, err := a.svcAutoscaling.DeleteLaunchConfiguration(input)
 	return err
 }
 

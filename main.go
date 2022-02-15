@@ -24,6 +24,7 @@ func main() {
 }
 
 func mainWithReturnCode() int {
+	// initialize
 	e := ECS{}
 	var err error
 	asgName := os.Getenv("ECS_ASG")
@@ -37,7 +38,7 @@ func mainWithReturnCode() int {
 		return 1
 	}
 	useLaunchTemplates := os.Getenv("LAUNCH_TEMPLATES")
-	a := Autoscaling{}
+	a := NewAutoscaling()
 	// get asg
 	asg, err := a.describeAutoscalingGroup(asgName)
 	if err != nil {
@@ -46,13 +47,13 @@ func mainWithReturnCode() int {
 	}
 	var newLaunchIdentifier string
 	if useLaunchTemplates == "true" {
-		newLaunchIdentifier, err = scaleWithLaunchTemplate(asg)
+		newLaunchIdentifier, err = scaleWithLaunchTemplate(a, asg)
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
 			return 1
 		}
 	} else {
-		newLaunchIdentifier, err = scaleWithLaunchConfig(asg)
+		newLaunchIdentifier, err = scaleWithLaunchConfig(a, asg)
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
 			return 1
@@ -110,7 +111,7 @@ func mainWithReturnCode() int {
 	}
 	// check target health
 	mainLogger.Debugf("Checking targets health")
-	err = checkTargetHealth(asgName, newLaunchIdentifier, useLaunchTemplates, clusterName)
+	err = checkTargetHealth(a, asgName, newLaunchIdentifier, useLaunchTemplates, clusterName)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		return 1
@@ -169,9 +170,8 @@ func drain(clusterName string, instances []AutoscalingInstance, newLaunchIdentif
 	}
 	return drainedContainerArns, nil
 }
-func checkTargetHealth(asgName, newLaunchIdentifier, useLaunchTemplates, clusterName string) error {
+func checkTargetHealth(a Autoscaling, asgName, newLaunchIdentifier, useLaunchTemplates, clusterName string) error {
 	lb := LB{}
-	a := Autoscaling{}
 	e := ECS{}
 	targetGroups, err := lb.getTargets()
 	if err != nil {
@@ -254,9 +254,7 @@ func getInstanceIPList(containerInstances map[string]string, instanceID string, 
 	return []string{}
 }
 
-func scaleWithLaunchConfig(asg AutoscalingGroup) (string, error) {
-	a := Autoscaling{}
-
+func scaleWithLaunchConfig(a Autoscaling, asg AutoscalingGroup) (string, error) {
 	// create new launch config
 	newLaunchConfigName, err := a.newLaunchConfigFromExisting(asg.LaunchConfigurationName)
 	if err != nil {
@@ -280,9 +278,7 @@ func scaleWithLaunchConfig(asg AutoscalingGroup) (string, error) {
 	}
 	return newLaunchConfigName, nil
 }
-func scaleWithLaunchTemplate(asg AutoscalingGroup) (string, error) {
-	a := Autoscaling{}
-
+func scaleWithLaunchTemplate(a Autoscaling, asg AutoscalingGroup) (string, error) {
 	// create new launch config
 	_, newLaunchTemplateName, newLaunchTemplateVersion, err := a.newLaunchTemplateVersion(asg.LaunchTemplateName)
 	if err != nil {
