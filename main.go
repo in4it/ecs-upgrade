@@ -78,15 +78,16 @@ func mainWithReturnCode() int {
 				if instance.HealthStatus == "HEALTHY" {
 					healthyInstances += 1
 				} else {
-					mainLogger.Debugf("Waiting for intance %s to become healthy (currently %s)", instance.InstanceId, instance.HealthStatus)
+					mainLogger.Debugf("Waiting for instance %s to become healthy (currently %s)", instance.InstanceId, instance.HealthStatus)
 				}
 			}
 		}
 		if healthyInstances >= asg.DesiredCapacity {
 			healthy = true
 		} else {
-			mainLogger.Debugf("Checking autoscaling instances health: Waiting 30s")
-			time.Sleep(30 * time.Second)
+			waitTime := int(math.Max(float64(len(instances)), 30))
+			mainLogger.Debugf("Checking autoscaling instances health: Waiting %ds", waitTime)
+			time.Sleep(time.Duration(waitTime) * time.Second)
 		}
 	}
 	// wait for new nodes to attach
@@ -147,7 +148,7 @@ func drain(clusterName string, instances []AutoscalingInstance, newLaunchIdentif
 		}
 	}
 	if float64(len(instancesToDrain)) > math.Ceil(float64(len(instances)/2)) {
-		return drainedContainerArns, fmt.Errorf("Going to drain %d instances out of %d, which is more than 50%", len(instancesToDrain), len(instances))
+		return drainedContainerArns, fmt.Errorf("Going to drain %d instances out of %d, which is more than 50%%", len(instancesToDrain), len(instances))
 	}
 	containerInstanceArns, err := e.listContainerInstances(clusterName)
 	if err != nil {
