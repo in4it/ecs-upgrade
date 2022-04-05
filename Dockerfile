@@ -12,7 +12,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /ecs-upgrade/ecs-
 #
 # Runtime container
 #
-FROM alpine:latest  
+FROM alpine:3.15.4  
 
 RUN apk --no-cache add ca-certificates && mkdir -p /app
 
