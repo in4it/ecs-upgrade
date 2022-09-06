@@ -5,20 +5,16 @@ data "aws_ecs_cluster" "ecs-upgrade" {
   cluster_name = var.ECS_CLUSTER
 }
 
-data "template_file" "ecs-upgrade" {
-  template = file("${path.module}/templates/ecs-upgrade.json")
-  vars = {
-    AWS_REGION       = var.AWS_REGION
-    ECS_CLUSTER      = var.ECS_CLUSTER
-    ECS_ASG          = var.ECS_ASG
-    IMAGE            = var.IMAGE
-    LAUNCH_TEMPLATES = var.LAUNCH_TEMPLATES
-    DEBUG            = var.DEBUG
-  }
-}
 resource "aws_ecs_task_definition" "ecs-upgrade" {
   family                   = "ecs-upgrade"
-  container_definitions    = data.template_file.ecs-upgrade.rendered
+  container_definitions    = templatefile("${path.module}/templates/ecs-upgrade.json", {
+          AWS_REGION       = var.AWS_REGION
+          ECS_CLUSTER      = var.ECS_CLUSTER
+          ECS_ASG          = var.ECS_ASG
+          IMAGE            = var.IMAGE
+          LAUNCH_TEMPLATES = var.LAUNCH_TEMPLATES
+          DEBUG            = var.DEBUG
+  })
   task_role_arn            = aws_iam_role.ecs-upgrade.arn
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
