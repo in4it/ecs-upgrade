@@ -177,7 +177,8 @@ EOF
 
 # cloudwatch log group
 resource "aws_cloudwatch_log_group" "ecs-upgrade" {
-  name = "ecs-upgrade"
+  name              = "ecs-upgrade"
+  retention_in_days = var.cloudwatch_log_retention_period
 }
 # scheduling
 resource "aws_cloudwatch_event_rule" "ecs-upgrade" {
