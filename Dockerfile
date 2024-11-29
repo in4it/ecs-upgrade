@@ -1,7 +1,7 @@
 #
 # Build go project
 #
-FROM golang:1.13-alpine as go-builder
+FROM golang:1.23-alpine as go-builder
 
 WORKDIR /ecs-upgrade/
 
