@@ -1,7 +1,7 @@
 #
 # Build go project
 #
-FROM golang:1.23-alpine as go-builder
+FROM golang:1.24.7-alpine as go-builder
 
 WORKDIR /ecs-upgrade/
 
@@ -12,7 +12,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /ecs-upgrade/ecs-
 #
 # Runtime container
 #
-FROM alpine:3.18.3  
+FROM alpine:3.22.1
 
 RUN apk --no-cache add ca-certificates && mkdir -p /app
 
@@ -20,4 +20,12 @@ WORKDIR /app
 
 COPY --from=go-builder /ecs-upgrade/ecs-upgrade .
 
-CMD ["./ecs-upgrade"]  
+# create a non-root user to run the application
+RUN apk add --no-cache shadow \
+    && useradd -u 1000 -U -m appuser \
+    && chown -R appuser:appuser /app
+
+# Switch to the non-root user
+USER appuser
+
+CMD ["./ecs-upgrade"]
